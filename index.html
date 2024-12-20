@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View and Generate PDF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: url('Books.jpg') no-repeat center center fixed;
+            background-size: cover;
+        }
+        textarea {
+            width: 90%;
+            height: 150px;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.8);
+        }
+        input[type="file"], input[type="number"], select {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        iframe {
+            width: 90%;
+            height: 500px;
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            display: none;
+        }
+        table {
+            width: 90%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            text-align: center;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        img {
+            max-width: 100px;
+            max-height: 100px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>View and Generate PDF</h1>
+    <textarea id="text-input" placeholder="Type your text here (use *word* for bold)..."></textarea>
+    <br>
+    <label>
+        Font:
+        <select id="font-type">
+            <option value="helvetica">Helvetica</option>
+            <option value="times">Times</option>
+            <option value="courier">Courier</option>
+        </select>
+    </label>
+    <br>
+    <button id="image-input-button">Add Image</button>
+    <input type="file" id="image-input" accept="image/*" style="display: none;">
+    <table id="image-table">
+        <thead>
+            <tr>
+                <th>Image</th>
+                <th>Width</th>
+                <th>Height</th>
+                <th>Alignment</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <br>
+    <button id="preview-pdf">View PDF</button>
+    <iframe id="pdf-preview"></iframe>
+    <button id="download-pdf" disabled>Download PDF</button>
+
+    <script>
+        const textInput = document.getElementById('text-input');
+        const fontTypeSelect = document.getElementById('font-type');
+        const imageInput = document.getElementById('image-input');
+        const imageInputButton = document.getElementById('image-input-button');
+        const imageTable = document.getElementById('image-table').querySelector('tbody');
+        const previewBtn = document.getElementById('preview-pdf');
+        const downloadBtn = document.getElementById('download-pdf');
+        const pdfPreview = document.getElementById('pdf-preview');
+
+        let doc;
+        const images = [];
+
+        imageInputButton.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files);
+            files.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imgData = e.target.result;
+                    const id = Date.now() + index;
+                    images.push({ data: imgData, id: id, width: 100, height: 100, alignment: 'center' });
+                    renderImages();
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        function renderImages() {
+            imageTable.innerHTML = '';
+            images.forEach((image, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><img src="${image.data}" alt="Image ${index + 1}"></td>
+                    <td>
+                        <input type="number" value="${image.width}" min="10" onchange="updateImageWidth(${image.id}, this.value)">
+                    </td>
+                    <td>
+                        <input type="number" value="${image.height}" min="10" onchange="updateImageHeight(${image.id}, this.value)">
+                    </td>
+                    <td>
+                        <select onchange="updateImageAlignment(${image.id}, this.value)">
+                            <option value="left" ${image.alignment === 'left' ? 'selected' : ''}>Left</option>
+                            <option value="center" ${image.alignment === 'center' ? 'selected' : ''}>Center</option>
+                            <option value="right" ${image.alignment === 'right' ? 'selected' : ''}>Right</option>
+                        </select>
+                    </td>
+                    <td>
+                        <button onclick="removeImage(${image.id})">Remove</button>
+                    </td>
+                `;
+                imageTable.appendChild(row);
+            });
+        }
+
+        window.removeImage = (id) => {
+            const index = images.findIndex((img) => img.id === id);
+            if (index > -1) {
+                images.splice(index, 1);
+                renderImages();
+            }
+        };
+
+        window.updateImageWidth = (id, width) => {
+            const image = images.find((img) => img.id === id);
+            if (image) {
+                image.width = parseInt(width, 10);
+            }
+        };
+
+        window.updateImageHeight = (id, height) => {
+            const image = images.find((img) => img.id === id);
+            if (image) {
+                image.height = parseInt(height, 10);
+            }
+        };
+
+        window.updateImageAlignment = (id, alignment) => {
+            const image = images.find((img) => img.id === id);
+            if (image) {
+                image.alignment = alignment;
+            }
+        };
+
+        function processText(doc, text, startY) {
+            const lines = text.split('\n');
+            let currentY = startY;
+
+            lines.forEach(line => {
+                const words = line.split(' ');
+                let currentX = 10;
+
+                words.forEach(word => {
+                    if (word.startsWith('*') && word.endsWith('*')) {
+                        doc.setFont(undefined, 'bold');
+                        doc.text(word.replace(/\*/g, ''), currentX, currentY);
+                    } else {
+                        doc.setFont(undefined, 'normal');
+                        doc.text(word, currentX, currentY);
+                    }
+                    currentX += doc.getTextWidth(word + ' ') + 1; // Move to next word
+                });
+
+                currentY += 10;
+            });
+
+            return currentY;
+        }
+
+        previewBtn.addEventListener('click', () => {
+            const text = textInput.value;
+            const fontType = fontTypeSelect.value;
+
+            const { jsPDF } = window.jspdf;
+            doc = new jsPDF();
+
+            doc.setFont(fontType);
+            let currentY = 10;
+            if (text.trim() !== '') {
+                currentY = processText(doc, text, currentY);
+            }
+
+            images.forEach((image) => {
+                let xPos;
+                const pdfWidth = doc.internal.pageSize.width;
+                if (image.alignment === 'left') {
+                    xPos = 10;
+                } else if (image.alignment === 'center') {
+                    xPos = (pdfWidth - image.width) / 2;
+                } else if (image.alignment === 'right') {
+                    xPos = pdfWidth - image.width - 10;
+                }
+                doc.addImage(image.data, 'JPEG', xPos, currentY, image.width, image.height);
+                currentY += image.height + 10;
+            });
+
+            showPdf(doc);
+        });
+
+        function showPdf(document) {
+            const pdfBlob = document.output('blob');
+            const url = URL.createObjectURL(pdfBlob);
+            pdfPreview.src = url;
+            pdfPreview.style.display = 'block';
+            downloadBtn.disabled = false;
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            if (doc) {
+                doc.save('document.pdf');
+            }
+        });
+    </script>
+</body>
+</html>
